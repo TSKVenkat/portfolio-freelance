@@ -31,14 +31,50 @@ async function dbConnect() {
     if (!cached.promise) {
         const opts = {
             bufferCommands: false,
+            maxPoolSize: 10, // Maintain up to 10 socket connections
+            serverSelectionTimeoutMS: 10000, // Give up initial connection after 10 seconds
+            socketTimeoutMS: 45000, // Close sockets after 45 seconds of inactivity
+            family: 4, // Use IPv4, skip trying IPv6
+            retryWrites: true
         };
 
-        cached.promise = mongoose.connect(MONGODB_URI, opts).then((mongoose) => {
-            return mongoose;
+        mongoose.connection.on('connected', () => {
+            console.log('MongoDB connected successfully');
         });
+
+        mongoose.connection.on('error', (err) => {
+            console.error('MongoDB connection error:', err);
+        });
+
+        mongoose.connection.on('disconnected', () => {
+            console.log('MongoDB disconnected');
+        });
+
+        // Add handler for Node.js process termination to close the MongoDB connection
+        process.on('SIGINT', async () => {
+            await mongoose.connection.close();
+            console.log('MongoDB connection closed due to app termination');
+            process.exit(0);
+        });
+
+        cached.promise = mongoose.connect(MONGODB_URI, opts)
+            .then((mongoose) => {
+                console.log('MongoDB connection established');
+                return mongoose;
+            })
+            .catch((error) => {
+                console.error('Error connecting to MongoDB:', error);
+                throw error;
+            });
     }
-    cached.conn = await cached.promise;
-    return cached.conn;
+    
+    try {
+        cached.conn = await cached.promise;
+        return cached.conn;
+    } catch (error) {
+        console.error('Failed to connect to MongoDB:', error);
+        throw error;
+    }
 }
 
 export default dbConnect;

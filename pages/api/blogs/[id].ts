@@ -15,6 +15,12 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
       if (!blog) {
         return res.status(404).json({ message: 'Blog not found' });
       }
+      
+      // If this is a public view, increment the view count
+      if (req.headers['x-increment-views']) {
+        await Blog.findByIdAndUpdate(id, { $inc: { viewCount: 1 } });
+      }
+      
       return res.status(200).json(blog);
     } catch (error) {
       console.error('Error fetching blog:', error);
@@ -25,7 +31,7 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
   // PUT update blog
   if (req.method === 'PUT') {
     try {
-      const { title, content, slug, excerpt } = req.body;
+      const { title, content, slug, excerpt, tags, published, featured, coverImage } = req.body;
 
       // Check if slug is being changed and if it's already in use
       const existingBlog = await Blog.findOne({ slug, _id: { $ne: id } });
@@ -35,7 +41,16 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
 
       const updatedBlog = await Blog.findByIdAndUpdate(
         id,
-        { title, content, slug, excerpt },
+        { 
+          title, 
+          content, 
+          slug, 
+          excerpt,
+          tags: tags || [],
+          published: published !== undefined ? published : true,
+          featured: featured !== undefined ? featured : false,
+          ...(coverImage && { coverImage })
+        },
         { new: true, runValidators: true }
       );
 
@@ -71,7 +86,12 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
 // Wrap the handler with auth middleware for protected routes
 export default async function apiHandler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method === 'PUT' || req.method === 'DELETE') {
-    return authMiddleware(handler)(req, res);
+    // Use the authMiddleware to protect these routes
+    return authMiddleware(
+      req,
+      res,
+      handler
+    );
   }
   return handler(req, res);
 }
